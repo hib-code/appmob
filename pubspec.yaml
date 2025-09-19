@@ -33,7 +33,7 @@ dependencies:
   geolocator: ^13.0.4
   photo_comparaison_quiz_package:
     path: photo_comparaison_quiz_package 
-
+  supabase_flutter: ^2.5.5
 dev_dependencies:
   flutter_test:    # CRITICAL: Required for Flutter project testing - DO NOT REMOVE
     sdk: flutter   # CRITICAL: Required for Flutter project testing - DO NOT REMOVE

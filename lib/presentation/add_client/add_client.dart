@@ -8,6 +8,9 @@ import 'package:sizer/sizer.dart';
 import '../../core/app_export.dart';
 import './widgets/client_form_fields.dart';
 import './widgets/client_photo_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:io';
+
 
 class AddClient extends StatefulWidget {
   const AddClient({super.key});
@@ -190,50 +193,73 @@ class _AddClientState extends State<AddClient> {
   }
 
   Future<void> _saveClient() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
+  if (!_formKey.currentState!.validate()) return;
+
+  setState(() => _isLoading = true);
+
+  try {
+    final supabase = Supabase.instance.client;
+
+    // ✅ 1. Upload photo si sélectionnée
+    String? photoUrl;
+    if (_selectedPhoto != null) {
+      final fileExt = _selectedPhoto!.path.split('.').last;
+      final fileName = "${DateTime.now().millisecondsSinceEpoch}.$fileExt";
+      final filePath = "clients/$fileName";
+
+      final fileBytes = await File(_selectedPhoto!.path).readAsBytes();
+
+      await supabase.storage.from('clients').uploadBinary(
+            filePath,
+            fileBytes,
+            fileOptions: FileOptions(contentType: "image/$fileExt"),
+          );
+
+      // Récupérer l’URL publique
+      photoUrl = supabase.storage.from('clients').getPublicUrl(filePath);
     }
 
-    setState(() {
-      _isLoading = true;
+    // ✅ 2. Insert dans la table clients
+    final response = await supabase.from('clients').insert({
+      'name': _nameController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'email': _emailController.text.trim(),
+      'address': _addressController.text.trim(),
+      'notes': _notesController.text.trim(),
+      'photo_url': photoUrl,
+      'created_at': DateTime.now().toIso8601String(),
     });
 
-    try {
-      // Simulate API call to save client
-      await Future.delayed(Duration(seconds: 1));
-
-      // Mock client data that would be saved
-      final clientData = {
-        'id': DateTime.now().millisecondsSinceEpoch.toString(),
-        'name': _nameController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'email': _emailController.text.trim(),
-        'address': _addressController.text.trim(),
-        'notes': _notesController.text.trim(),
-        'photo': _selectedPhoto?.path,
-        'createdAt': DateTime.now().toIso8601String(),
-      };
-
-      // Show success feedback
-      HapticFeedback.lightImpact();
-      Fluttertoast.showToast(
-        msg: 'Client added successfully',
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: AppTheme.lightTheme.colorScheme.tertiary,
-        textColor: Colors.white,
-      );
-
-      // Navigate to photo comparison screen
-      Navigator.pushNamed(context, '/splash_screen');
-    } catch (e) {
-      _showErrorDialog('Failed to save client. Please try again.');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+    if (response.error != null) {
+      throw response.error!;
     }
+
+    // ✅ 3. Feedback utilisateur
+    HapticFeedback.lightImpact();
+    Fluttertoast.showToast(
+      msg: '✅ Client ajouté avec succès',
+      toastLength: Toast.LENGTH_SHORT,
+      gravity: ToastGravity.BOTTOM,
+      backgroundColor: AppTheme.lightTheme.colorScheme.tertiary,
+      textColor: Colors.white,
+    );
+
+    // Nettoyer formulaire
+    _nameController.clear();
+    _phoneController.clear();
+    _emailController.clear();
+    _addressController.clear();
+    _notesController.clear();
+    setState(() => _selectedPhoto = null);
+
+    Navigator.pushNamed(context, '/splash_screen');
+  } catch (e) {
+    _showErrorDialog('❌ Erreur enregistrement: $e');
+  } finally {
+    setState(() => _isLoading = false);
   }
+}
+
 
   Future<bool> _onWillPop() async {
     if (!_hasUnsavedChanges) return true;

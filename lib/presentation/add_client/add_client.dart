@@ -193,72 +193,93 @@ class _AddClientState extends State<AddClient> {
   }
 
   Future<void> _saveClient() async {
-  if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return;
 
-  setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
 
-  try {
-    final supabase = Supabase.instance.client;
+    try {
+      final supabase = Supabase.instance.client;
+      print('🔍 Début de l\'enregistrement du client...');
 
-    // ✅ 1. Upload photo si sélectionnée
-    String? photoUrl;
-    if (_selectedPhoto != null) {
-      final fileExt = _selectedPhoto!.path.split('.').last;
-      final fileName = "${DateTime.now().millisecondsSinceEpoch}.$fileExt";
-      final filePath = "clients/$fileName";
+      // ✅ 1. Upload photo si sélectionnée
+      String? photoUrl;
+      if (_selectedPhoto != null) {
+        print('📸 Upload de la photo...');
+        final fileExt = _selectedPhoto!.path.split('.').last;
+        final fileName = "${DateTime.now().millisecondsSinceEpoch}.$fileExt";
+        final filePath = "clients/$fileName";
 
-      final fileBytes = await File(_selectedPhoto!.path).readAsBytes();
+        final fileBytes = await File(_selectedPhoto!.path).readAsBytes();
 
-      await supabase.storage.from('clients').uploadBinary(
-            filePath,
-            fileBytes,
-            fileOptions: FileOptions(contentType: "image/$fileExt"),
-          );
+        await supabase.storage.from('clients').uploadBinary(
+              filePath,
+              fileBytes,
+              fileOptions: FileOptions(contentType: "image/$fileExt"),
+            );
 
-      // Récupérer l’URL publique
-      photoUrl = supabase.storage.from('clients').getPublicUrl(filePath);
+        // Récupérer l'URL publique
+        photoUrl = supabase.storage.from('clients').getPublicUrl(filePath);
+        print('✅ Photo uploadée: $photoUrl');
+      }
+
+      // ✅ 2. Préparer les données
+      final clientData = {
+        'name': _nameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'email': _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
+        'address': _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
+        'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        'photo_url': photoUrl,
+        'created_at': DateTime.now().toIso8601String(),
+      };
+      
+      print('📝 Données à insérer: $clientData');
+
+      // ✅ 3. Insert dans la table clients
+      print('💾 Insertion dans la base de données...');
+      final response = await supabase.from('clients').insert(clientData).select();
+
+      print('✅ Réponse de la base de données: $response');
+
+      // Vérifier que l'insertion a réussi
+      if (response.isEmpty) {
+        throw Exception('Aucune donnée retournée après insertion');
+      }
+
+      // ✅ 4. Feedback utilisateur
+      HapticFeedback.lightImpact();
+      Fluttertoast.showToast(
+        msg: '✅ Client ajouté avec succès',
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: AppTheme.lightTheme.colorScheme.tertiary,
+        textColor: Colors.white,
+      );
+
+      // Nettoyer formulaire
+      _nameController.clear();
+      _phoneController.clear();
+      _emailController.clear();
+      _addressController.clear();
+      _notesController.clear();
+      setState(() => _selectedPhoto = null);
+
+      // Retourner à la liste des clients au lieu du splash screen
+      Navigator.pop(context);
+    } catch (e) {
+      print('❌ Erreur détaillée: $e');
+      print('❌ Type d\'erreur: ${e.runtimeType}');
+      if (e is PostgrestException) {
+        print('❌ Code d\'erreur Postgrest: ${e.code}');
+        print('❌ Message Postgrest: ${e.message}');
+        print('❌ Détails Postgrest: ${e.details}');
+        print('❌ Hint Postgrest: ${e.hint}');
+      }
+      _showErrorDialog('❌ Erreur enregistrement: $e');
+    } finally {
+      setState(() => _isLoading = false);
     }
-
-    // ✅ 2. Insert dans la table clients
-    final response = await supabase.from('clients').insert({
-      'name': _nameController.text.trim(),
-      'phone': _phoneController.text.trim(),
-      'email': _emailController.text.trim(),
-      'address': _addressController.text.trim(),
-      'notes': _notesController.text.trim(),
-      'photo_url': photoUrl,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-
-    if (response.error != null) {
-      throw response.error!;
-    }
-
-    // ✅ 3. Feedback utilisateur
-    HapticFeedback.lightImpact();
-    Fluttertoast.showToast(
-      msg: '✅ Client ajouté avec succès',
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
-      backgroundColor: AppTheme.lightTheme.colorScheme.tertiary,
-      textColor: Colors.white,
-    );
-
-    // Nettoyer formulaire
-    _nameController.clear();
-    _phoneController.clear();
-    _emailController.clear();
-    _addressController.clear();
-    _notesController.clear();
-    setState(() => _selectedPhoto = null);
-
-    Navigator.pushNamed(context, '/splash_screen');
-  } catch (e) {
-    _showErrorDialog('❌ Erreur enregistrement: $e');
-  } finally {
-    setState(() => _isLoading = false);
   }
-}
 
 
   Future<bool> _onWillPop() async {
